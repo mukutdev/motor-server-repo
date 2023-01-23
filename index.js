@@ -10,16 +10,28 @@ require("dotenv").config();
 app.use(cors());
 app.use(express.json());
 
+
+
+app.use(function(req, res, next) {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+  next();
+});
+
 //verify jwt function
 
-function verifyJwt(req, res, next) {
+
+
+function verifyJwt (req, res, next) {
   const authHeader = req.headers.authorization;
+  // console.log(authHeader);
 
   if (!authHeader) {
     res.status(401).send("unauthorized access");
   }
 
   const token = authHeader.split(" ")[1];
+  // console.log(token);
 
   jwt.verify(token, process.env.ACCESS_TOKEN, (err, decoded) => {
     if (err) {
@@ -50,7 +62,7 @@ async function run() {
 
 
     //getting all categories name
-    app.get("/categories", async (req, res) => {
+    app.get("/categories",  async (req, res) => {
       const query = {};
       const result = await categoryCollections.find(query).toArray();
       res.send(result);
@@ -70,8 +82,9 @@ async function run() {
       const email = req.query.email;
       const query = { email: email };
       const user = await userCollections.findOne(query);
+      console.log(user);
       if (user) {
-        const token = jwt.sign({ email }, process.env.ACCESS_TOKEN, {
+        const token = jwt.sign({ email }, process.env.ACCESS_TOKEN,{
           expiresIn: "1d",
         });
         return res.send({ accessToken: token });
@@ -100,8 +113,10 @@ async function run() {
     //get users based on accountMode
     app.get("/users/role/:email", async (req, res) => {
       const email = req.params.email;
+      console.log(email);
       const query = { email: email };
       const result = await userCollections.findOne(query);
+      console.log(result);
       res.send(result);
     });
 
@@ -114,9 +129,9 @@ async function run() {
     });
     // get user based bookings
 
-    app.get("/bookings", verifyJwt, async (req, res) => {
+    app.get("/bookings", async (req, res) => {
       const email = req.query.email;
-      console.log(email);
+      // console.log(email);
       const query = { cusEmail: email };
       const booking = await bookingCollections.find(query).toArray();
       res.send(booking);
@@ -124,7 +139,7 @@ async function run() {
 
     //add new car to collection
 
-    app.post("/allCars", verifyJwt, async (req, res) => {
+    app.post("/allCars", async (req, res) => {
       const car = req.body;
       const result = await carsCollections.insertOne(car);
       res.send(result);
@@ -132,7 +147,7 @@ async function run() {
 
     //getting all added car based on seller
 
-    app.get("/allCars", verifyJwt, async (req, res) => {
+    app.get("/allCars",  async (req, res) => {
       const email = req.query.email;
       const query = { email: email };
       const products = await carsCollections.find(query).toArray();
@@ -146,10 +161,9 @@ async function run() {
       res.send(products);
     });
 
-    app.put("/allCars/advertise/:id", verifyJwt, async (req, res) => {
+    app.put("/allCars/advertise/:id",  async (req, res) => {
       const id = req.params.id;
       const filter = { _id: ObjectId(id) };
-
       const options = { upsert: true };
       const updatedDoc = {
         $set: {
@@ -175,7 +189,7 @@ async function run() {
     })
 
     //getting all sellers
-    app.get('/sellers', verifyJwt, async (req, res)=>{
+    app.get('/sellers', async (req, res)=>{
 
         const query = {accountMode : 'seller'}
         const result = await userCollections.find(query).toArray()
@@ -194,7 +208,7 @@ async function run() {
     })
     //getting all buyers
 
-    app.get('/buyers', verifyJwt, async (req, res)=>{
+    app.get('/buyers', async (req, res)=>{
         const query = {accountMode : 'buyer'}
         const result = await userCollections.find(query).toArray()
         res.send(result)
@@ -203,7 +217,7 @@ async function run() {
     //buyer delete api
     app.delete('/buyers/:id', async (req, res)=>{
         const id = req.params.id;
-        console.log(id);
+        // console.log(id);
         const query = {_id : ObjectId(id)}
         const result = await userCollections.deleteOne(query)
         res.send(result)
@@ -211,23 +225,65 @@ async function run() {
     })
 
     //seller verification
+    app.put('/sellers/verified-seller' , async (req, res)=>{
 
-    app.put('/sellers/verified/:id' , verifyJwt , async (req, res)=>{
-        
-        const id = req.params.id;
-        const filter = {_id : ObjectId(id)}
-        const option = {upsert : true}
+      try {
+        const email = req.body.email
+        const findUser = await userCollections.findOne({email : email})
+        if(findUser && findUser.email) {
+        // console.log(findUser.email);
+        const options = { upsert: true };
         const updatedDoc = {
-            $set :{
-                verified : true
-            }
+        $set: {
+        verified: true,
+        },
+        };
+        const result = await userCollections.updateOne(findUser , updatedDoc , options)
+        const findAllCars = await carsCollections.find({email : findUser.email}).toArray()
+        if(findAllCars.length > 0) {
+        const carMaps = findAllCars.map(car => car.email)
+        const updatedCars = await carsCollections.updateMany({email : {$in : carMaps}} , {
+        $set :{
+        verified : true
         }
-
-        const result = await userCollections.updateOne(filter , updatedDoc , option)
+        })
+        }
         res.send(result)
+        } else {
+        res.status(404).send({error: "User not found"})
+        }
+        } catch(err) {
+        res.status(500).send({error: "Something went wrong"})
+        }
+        })
 
-    })
 
+
+      //   const email = req.body.email
+      //   const findUser = await userCollections.findOne({email : email}) 
+      //   const userEmail = findUser.email; 
+      //   console.log(findUser.email);
+      //   const options = { upsert: true };
+      //   const updatedDoc = {
+      //   $set: {
+      //     verified: true,
+      //   },
+      // };
+      //   const result = await userCollections.updateOne(findUser , updatedDoc , options)
+      //   const findAllCars = await carsCollections.find({email : userEmail}).toArray()
+      //   const carMaps = findAllCars.map(car => car.email)
+      //   const updatedCars = carsCollections.updateMany({email : {$in : carMaps}} , {
+      //     $set :{
+      //       verified : true
+      //     }
+      //   })
+
+      //   res.send(result)
+  
+
+        
+
+        
 
   } finally {
   }
